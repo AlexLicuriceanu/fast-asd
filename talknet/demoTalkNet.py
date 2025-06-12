@@ -16,7 +16,7 @@ from talkNet import talkNet
 
 warnings.filterwarnings("ignore")
 
-pretrained_model_path = "/root/.cache/models/pretrain_TalkSet.model"
+pretrained_model_path = "/home/rhc/licenta4/models/pretrain_TalkSet.model"
 save_path = "save/"
 data_loader_thread = 10
 face_detection_scale = 0.25
@@ -65,45 +65,85 @@ def scene_detect(video_path, save = False, start_frame = 0, end_frame = None):
 			# sys.stderr.write('%s - scenes detected %d\n'%(video_path, len(sceneList)))
 	return sceneList
 
+# def initialize_detector(device='cuda'):
+# 	# Initialize the face detector
+# 	DET = S3FD(device=device)
+# 	return DET
+from ultralytics import YOLO
+
 def initialize_detector(device='cuda'):
-	# Initialize the face detector
-	DET = S3FD(device=device)
-	return DET
+    model = YOLO("/home/rhc/licenta4/models/yolov8n-face.pt")  # You may need to download a YOLOv8 face detection model
+    model.to(device)
+    return model
 
-def predict_faces(DET, start_frame = 0):
-	# GPU: Face detection, output is the list contains the face location and score in this frame
-	flist = glob.glob(os.path.join(pyframesPath, '*.jpg'))
-	flist.sort()
-	dets = []
-	for fidx, fname in enumerate(flist):
-		image = cv2.imread(fname)
-		imageNumpy = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-		bboxes = DET.detect_faces(imageNumpy, conf_th=0.9, scales=[face_detection_scale])
-		dets.append([])
-		for bbox in bboxes:
-			dets[-1].append({'frame':fidx + start_frame, 'bbox':(bbox[:-1]).tolist(), 'conf':bbox[-1]}) # dets has the frames info, bbox info, conf info
+# def predict_faces(DET, start_frame = 0):
+# 	# GPU: Face detection, output is the list contains the face location and score in this frame
+# 	flist = glob.glob(os.path.join(pyframesPath, '*.jpg'))
+# 	flist.sort()
+# 	dets = []
+# 	for fidx, fname in enumerate(flist):
+# 		image = cv2.imread(fname)
+# 		imageNumpy = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+# 		bboxes = DET.detect_faces(imageNumpy, conf_th=0.9, scales=[face_detection_scale])
+# 		dets.append([])
+# 		for bbox in bboxes:
+# 			dets[-1].append({'frame':fidx + start_frame, 'bbox':(bbox[:-1]).tolist(), 'conf':bbox[-1]}) # dets has the frames info, bbox info, conf info
 
-	savePath = os.path.join(pyworkPath,'faces.pckl')
-	with open(savePath, 'wb') as fil:
-		pickle.dump(dets, fil)
-	return dets
+# 	savePath = os.path.join(pyworkPath,'faces.pckl')
+# 	with open(savePath, 'wb') as fil:
+# 		pickle.dump(dets, fil)
+# 	return dets
+def predict_faces(DET, start_frame=0, batch_size=16):
+    flist = sorted(glob.glob(os.path.join(pyframesPath, '*.jpg')))
+    images = [cv2.imread(fname) for fname in flist]
 
-def predict_faces_from_frames(DET, frames, start_frame = 0):
-	# GPU: Face detection, output is the list contains the face location and score in this frame
-	dets = []
-	import time
-	for fidx, frame in enumerate(frames):
-		t = time.time()
-		imageNumpy = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-		bboxes = DET.detect_faces(imageNumpy, conf_th=0.9, scales=[face_detection_scale])
-		dets.append([])
-		for bbox in bboxes:
-			dets[-1].append({'frame':fidx + start_frame, 'bbox':(bbox[:-1]).tolist(), 'conf':bbox[-1]}) # dets has the frames info, bbox info, conf info
+    return predict_faces_from_frames(DET, images, start_frame=start_frame, batch_size=batch_size)
 
-	savePath = os.path.join(pyworkPath,'faces.pckl')
-	with open(savePath, 'wb') as fil:
-		pickle.dump(dets, fil)
-	return dets
+
+
+# def predict_faces_from_frames(DET, frames, start_frame = 0):
+# 	# GPU: Face detection, output is the list contains the face location and score in this frame
+# 	dets = []
+# 	import time
+# 	for fidx, frame in enumerate(frames):
+# 		t = time.time()
+# 		imageNumpy = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+# 		bboxes = DET.detect_faces(imageNumpy, conf_th=0.9, scales=[face_detection_scale])
+# 		dets.append([])
+# 		for bbox in bboxes:
+# 			dets[-1].append({'frame':fidx + start_frame, 'bbox':(bbox[:-1]).tolist(), 'conf':bbox[-1]}) # dets has the frames info, bbox info, conf info
+
+# 	savePath = os.path.join(pyworkPath,'faces.pckl')
+# 	with open(savePath, 'wb') as fil:
+# 		pickle.dump(dets, fil)
+# 	return dets
+def predict_faces_from_frames(DET, frames, start_frame=0, batch_size=16):
+    dets = []
+    total_frames = len(frames)
+
+    for i in range(0, total_frames, batch_size):
+        batch = frames[i:i + batch_size]
+        results = DET.predict(source=batch, verbose=False)
+
+        for j, result in enumerate(results):
+            dets.append([])
+            for box in result.boxes:
+                x1, y1, x2, y2 = box.xyxy[0].tolist()
+                conf = box.conf[0].item()
+                if conf > 0.5:
+                    dets[-1].append({
+                        'frame': i + j + start_frame,
+                        'bbox': [x1, y1, x2, y2],
+                        'conf': conf
+                    })
+
+    savePath = os.path.join(pyworkPath, 'faces.pckl')
+    with open(savePath, 'wb') as fil:
+        pickle.dump(dets, fil)
+
+    return dets
+
+
 
 def bb_intersection_over_union(boxA, boxB, evalCol = False):
 	# CPU: IOU Function to calculate overlap between two image
@@ -241,6 +281,7 @@ def evaluate_network(s, files):
 	allScores = []
 	# durationSet = {1,2,4,6} # To make the result more reliable
 	durationSet = {1,1,1,2,2,2,3,3,4,5,6} # Use this line can get more reliable result
+	durationSet = {1,2,3}
 	for file in tqdm.tqdm(files, total = len(files)):
 		fileName = os.path.splitext(file.split('/')[-1])[0] # Load audio and video
 		# print(os.path.join(pycropPath, fileName + '.wav'))
