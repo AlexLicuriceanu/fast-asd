@@ -1,12 +1,11 @@
-import sieve
 from utils import get_video_dimensions, get_video_length, create_video_segments
 from custom_types import VideoSegment, Frame, Box
 import threading
 import queue
 
-SPEAKER_DETECTION_MODEL = "sieve/talknet-asd"
+SPEAKER_DETECTION_MODEL = "/home/rhc/licenta4/models/pretrain_TalkSet.model"
 SPEAKER_DETECTION_IN_MEMORY_THRESHOLD = 3000
-OBJECT_DETECTION_MODEL = "sieve/yolov8"
+OBJECT_DETECTION_MODEL = "/home/rhc/licenta4/models/yolov8n-face.pt"
 
 def push_video_segments_to_object_detection(video_segment, file, frame_interval=600, models="yolov8l, yolov8l-face", processing_fps=2):
     object_detector = sieve.function.get(OBJECT_DETECTION_MODEL)
@@ -59,38 +58,7 @@ def get_active_speakers(speaker_frames, alpha=0.5, score_threshold=0):
 
     return active_speakers
 
-metadata = sieve.Metadata(
-    title="Detect Active Speakers",
-    description="State-of-the-art active speaker detection based on new, efficent face and speaker detection models.",
-    tags=["Video", "Showcase"],
-    code_url="https://github.com/sieve-community/fast-asd",
-    image=sieve.Image(url="https://storage.googleapis.com/sieve-public-data/asd/speaker-icon.webp"),
-    readme=open("README.md", "r").read(),
-)
 
-@sieve.function(
-    name="active_speaker_detection",
-    python_version="3.9",
-    metadata=metadata,
-    python_packages=[
-        "numpy==1.23.5",
-        "filterpy==1.4.5",
-        "opencv-python==4.7.0.72",
-        "scenedetect[opencv]",
-    ],
-    system_packages=[
-        "ffmpeg",
-        "libgl1-mesa-glx",
-        "libglib2.0-0"
-    ],
-    run_commands=[
-        "pip install lap==0.4.0",
-        "pip install sortedcontainers",
-        "pip install supervision",
-        "pip install 'vidgear[core]'",
-        "pip install 'imageio[ffmpeg]'"
-    ],
-)
 def process(
     file: sieve.File,
     speed_boost: bool = False,
@@ -565,8 +533,9 @@ def process(
             yield batch_frames
         
 if __name__ == "__main__":
-    TEST_URL = "https://storage.googleapis.com/sieve-prod-us-central1-public-file-upload-bucket/d979a930-f2a5-4e0d-84fe-a9b233985c4e/dba9cbf3-8374-44bc-8d9d-cc9833d3f502-input-file.mp4"
+
     # change "url" to "path" if you want to test with a local file
-    file = sieve.File(url=TEST_URL)
+    file = "/home/rhc/licenta4/trimmed_outputs/Integreaza_defectele_in_personaj_Madalina_Dobrovolschi_TEDxICHB_Youth_Live/13_Integreaza_defectele_in_personaj_Madalina_Dobrovolschi_TEDxICHB_Youth_Live.mp4"
+
     for out in process(file):
         print(out)
